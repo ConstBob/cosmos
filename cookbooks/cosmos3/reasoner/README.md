@@ -207,7 +207,8 @@ assets are sent as base64 data URIs; video frame sampling is controlled with
 ### Quickstart
 
 Set up the environment: [Transformers setup](../README.md#transformers). This
-installs a Transformers release with the Cosmos3 integration.
+installs a Transformers release with the Cosmos3 Nano/Super integration; for
+**Edge**, follow that section's note to install Transformers from `main`.
 
 Run **Cosmos3-Nano** Reasoner inference in process:
 
@@ -290,8 +291,64 @@ Then reuse the `model.generate` and `batch_decode` block from the image example.
 
 To run **Cosmos3-Super**, change `model_id` to `nvidia/Cosmos3-Super`.
 `device_map="auto"` can shard the model across multiple GPUs when Accelerate is
-installed. Use [vLLM](#run-with-vllm) or [NIM](#run-with-nim) when you need an
-OpenAI-compatible server instead of local Python inference.
+installed.
+
+### Cosmos3-Edge
+
+`nvidia/Cosmos3-Edge` uses a separate Transformers integration. Install
+Transformers from `main` as described in
+[Transformers setup](../README.md#transformers), then load with
+`AutoModelForImageTextToText` — **not** `Cosmos3OmniForConditionalGeneration`:
+
+```python
+from pathlib import Path
+
+import torch
+from transformers import AutoModelForImageTextToText, AutoProcessor
+
+model_id = "nvidia/Cosmos3-Edge"
+image_path = Path("assets/robot_153.jpg").resolve()
+
+processor = AutoProcessor.from_pretrained(model_id)
+model = AutoModelForImageTextToText.from_pretrained(
+    model_id,
+    dtype=torch.bfloat16,
+    device_map="auto",
+)
+
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "image", "path": str(image_path)},
+            {"type": "text", "text": "Caption the image in detail."},
+        ],
+    }
+]
+
+inputs = processor.apply_chat_template(
+    messages,
+    tokenize=True,
+    add_generation_prompt=True,
+    return_dict=True,
+    return_tensors="pt",
+).to(model.device, torch.bfloat16)
+
+generated_ids = model.generate(**inputs, do_sample=False, max_new_tokens=512)
+generated_ids_trimmed = [
+    out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+]
+output = processor.batch_decode(
+    generated_ids_trimmed,
+    skip_special_tokens=True,
+    clean_up_tokenization_spaces=False,
+)
+print(output[0])
+```
+
+For video inputs, reuse the Nano `video` content block and `fps=` example above
+with this Edge model load. Use [vLLM](#run-with-vllm) or [NIM](#run-with-nim)
+when you need an OpenAI-compatible server instead of local Python inference.
 
 ### Notebook walkthrough
 
@@ -302,7 +359,8 @@ and loads `Cosmos3OmniForConditionalGeneration` in process. A small
 `run_reasoner` helper wraps `apply_chat_template` + `generate`, and the notebook
 then runs the image and video examples shown above. To scale from **Nano** to
 **Super**, change only `model_id` in the load cell and re-run; `device_map="auto"`
-shards Super across multiple GPUs.
+shards Super across multiple GPUs. The notebook currently covers Nano/Super; use
+the Edge quickstart above for `nvidia/Cosmos3-Edge`.
 
 ## Run with TensorRT-LLM
 

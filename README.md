@@ -819,15 +819,20 @@ For complete serving instructions and request examples, see the [Cosmos3 SGLang 
 <summary>Use Transformers for local Reasoner inference from Python.</summary>
 
 Use Hugging Face Transformers for Python-first Reasoner inference. This path
-loads only the Reasoner tower from the unified `nvidia/Cosmos3-Nano` or
-`nvidia/Cosmos3-Super` checkpoint and returns text from text, image, or video
+loads only the Reasoner tower and returns text from text, image, or video
 inputs. It does not load the Generator diffusion, audio, or action heads; use
 [Generator with Diffusers](#generator-with-diffusers),
 [Generator with vLLM-Omni](#generator-with-vllm-omni), or
 [Generator with NIM](#generator-with-nim) for supported non-text outputs.
 
-Cosmos3 support first appears in the Transformers `v5.11.0` release tag. Install
-Transformers `5.11.0` or newer:
+**Nano / Super** use `Cosmos3OmniForConditionalGeneration` with the unified
+`nvidia/Cosmos3-Nano` or `nvidia/Cosmos3-Super` checkpoint. **Edge** uses a
+separate integration (`AutoModelForImageTextToText` /
+`Cosmos3EdgeForConditionalGeneration`) with `nvidia/Cosmos3-Edge` — do not load
+Edge with the Omni class.
+
+Nano and Super support first appears in the Transformers `v5.11.0` release tag.
+Install Transformers `5.11.0` or newer for those models:
 
 ```shell
 uv venv --python 3.13 --seed --managed-python
@@ -922,7 +927,66 @@ Then reuse the `model.generate` and `batch_decode` block from the image example.
 
 For `nvidia/Cosmos3-Super`, change `model_id` to `nvidia/Cosmos3-Super`.
 `device_map="auto"` can shard the model across multiple GPUs when Accelerate is
-installed. For an OpenAI-compatible server, use
+installed.
+
+For **Cosmos3-Edge**, install Transformers from `main` until a PyPI release
+includes the Edge integration
+([huggingface/transformers#47181](https://github.com/huggingface/transformers/pull/47181)):
+
+```shell
+uv pip install "transformers @ git+https://github.com/huggingface/transformers.git"
+```
+
+Then load Edge with the Auto image-text API (not `Cosmos3OmniForConditionalGeneration`):
+
+```python
+from pathlib import Path
+
+import torch
+from transformers import AutoModelForImageTextToText, AutoProcessor
+
+model_id = "nvidia/Cosmos3-Edge"
+image_path = Path("cookbooks/cosmos3/reasoner/assets/robot_153.jpg").resolve()
+
+processor = AutoProcessor.from_pretrained(model_id)
+model = AutoModelForImageTextToText.from_pretrained(
+    model_id,
+    dtype=torch.bfloat16,
+    device_map="auto",
+)
+
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "image", "path": str(image_path)},
+            {"type": "text", "text": "Caption the image in detail."},
+        ],
+    }
+]
+
+inputs = processor.apply_chat_template(
+    messages,
+    tokenize=True,
+    add_generation_prompt=True,
+    return_dict=True,
+    return_tensors="pt",
+).to(model.device, torch.bfloat16)
+
+generated_ids = model.generate(**inputs, do_sample=False, max_new_tokens=512)
+generated_ids_trimmed = [
+    out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+]
+output = processor.batch_decode(
+    generated_ids_trimmed,
+    skip_special_tokens=True,
+    clean_up_tokenization_spaces=False,
+)
+print(output[0])
+```
+
+Video inputs use the same `video` content block and `fps=` argument as the Nano
+example above; only the model load changes. For an OpenAI-compatible server, use
 [Reasoner with vLLM](#reasoner-with-vllm), [Reasoner with TensorRT-LLM](#reasoner-with-tensorrt-llm), or [Reasoner with NIM](#reasoner-with-nim).
 
 </details>
