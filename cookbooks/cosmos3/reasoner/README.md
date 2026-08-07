@@ -354,13 +354,15 @@ when you need an OpenAI-compatible server instead of local Python inference.
 
 [`run_with_transformers.ipynb`](./run_with_transformers.ipynb) is the Python-first
 counterpart to the server notebooks: instead of launching a server, it installs an
-isolated venv, registers a `Cosmos3 Transformers (Python 3.13)` Jupyter kernel,
-and loads `Cosmos3OmniForConditionalGeneration` in process. A small
-`run_reasoner` helper wraps `apply_chat_template` + `generate`, and the notebook
-then runs the image and video examples shown above. To scale from **Nano** to
-**Super**, change only `model_id` in the load cell and re-run; `device_map="auto"`
-shards Super across multiple GPUs. The notebook currently covers Nano/Super; use
-the Edge quickstart above for `nvidia/Cosmos3-Edge`.
+isolated venv (Transformers from `main`, so Edge is available), registers a
+`Cosmos3 Transformers (Python 3.13)` Jupyter kernel, and loads the Reasoner in
+process. A small `run_reasoner` helper wraps `apply_chat_template` + `generate`,
+and the notebook then runs the image and video examples shown above. Set
+`model_id` to `nvidia/Cosmos3-Nano`, `nvidia/Cosmos3-Super`, or
+`nvidia/Cosmos3-Edge` in the load cell and re-run; Nano/Super use
+`Cosmos3OmniForConditionalGeneration`, while Edge uses
+`AutoModelForImageTextToText`. `device_map="auto"` shards Super across multiple
+GPUs.
 
 ## Run with TensorRT-LLM
 
