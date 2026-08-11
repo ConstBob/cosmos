@@ -332,9 +332,8 @@ your environment needs an explicit CUDA wheel.
 **Cosmos3-Edge** uses a separate Transformers integration
 (`AutoModelForImageTextToText` / `Cosmos3EdgeForConditionalGeneration`) with
 `nvidia/Cosmos3-Edge`. Do not load Edge with `Cosmos3OmniForConditionalGeneration`.
-Edge support is on Transformers `main`
-([huggingface/transformers#47181](https://github.com/huggingface/transformers/pull/47181))
-and is not yet in a stable PyPI release; install from GitHub instead of the
+Edge support is on Transformers `main` and is not yet in a stable PyPI release;
+install from GitHub instead of the
 `transformers>=5.11.0` pin above:
 
 ```bash

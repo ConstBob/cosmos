@@ -930,8 +930,7 @@ For `nvidia/Cosmos3-Super`, change `model_id` to `nvidia/Cosmos3-Super`.
 installed.
 
 For **Cosmos3-Edge**, install Transformers from `main` until a PyPI release
-includes the Edge integration
-([huggingface/transformers#47181](https://github.com/huggingface/transformers/pull/47181)):
+includes the Edge integration:
 
 ```shell
 uv pip install "transformers @ git+https://github.com/huggingface/transformers.git"
