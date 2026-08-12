@@ -930,62 +930,16 @@ For `nvidia/Cosmos3-Super`, change `model_id` to `nvidia/Cosmos3-Super`.
 installed.
 
 For **Cosmos3-Edge**, install Transformers from `main` until a PyPI release
-includes the Edge integration:
+includes the Edge integration, then load with `AutoModelForImageTextToText`
+(not `Cosmos3OmniForConditionalGeneration`). See
+[`run_with_transformers.ipynb`](cookbooks/cosmos3/reasoner/run_with_transformers.ipynb)
+for the full Edge walkthrough:
 
 ```shell
 uv pip install "transformers @ git+https://github.com/huggingface/transformers.git"
 ```
 
-Then load Edge with the Auto image-text API (not `Cosmos3OmniForConditionalGeneration`):
-
-```python
-from pathlib import Path
-
-import torch
-from transformers import AutoModelForImageTextToText, AutoProcessor
-
-model_id = "nvidia/Cosmos3-Edge"
-image_path = Path("cookbooks/cosmos3/reasoner/assets/robot_153.jpg").resolve()
-
-processor = AutoProcessor.from_pretrained(model_id)
-model = AutoModelForImageTextToText.from_pretrained(
-    model_id,
-    dtype=torch.bfloat16,
-    device_map="auto",
-)
-
-messages = [
-    {
-        "role": "user",
-        "content": [
-            {"type": "image", "path": str(image_path)},
-            {"type": "text", "text": "Caption the image in detail."},
-        ],
-    }
-]
-
-inputs = processor.apply_chat_template(
-    messages,
-    tokenize=True,
-    add_generation_prompt=True,
-    return_dict=True,
-    return_tensors="pt",
-).to(model.device, torch.bfloat16)
-
-generated_ids = model.generate(**inputs, do_sample=False, max_new_tokens=512)
-generated_ids_trimmed = [
-    out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-]
-output = processor.batch_decode(
-    generated_ids_trimmed,
-    skip_special_tokens=True,
-    clean_up_tokenization_spaces=False,
-)
-print(output[0])
-```
-
-Video inputs use the same `video` content block and `fps=` argument as the Nano
-example above; only the model load changes. For an OpenAI-compatible server, use
+For an OpenAI-compatible server, use
 [Reasoner with vLLM](#reasoner-with-vllm), [Reasoner with TensorRT-LLM](#reasoner-with-tensorrt-llm), or [Reasoner with NIM](#reasoner-with-nim).
 
 </details>
