@@ -97,9 +97,8 @@ by activating it (`source .venv/bin/activate`) or via its absolute interpreter
 
 For CUDA 13, NVIDIA documents the [NGC PyTorch container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch)
 `nvcr.io/nvidia/pytorch:25.09-py3` as the recommended starting point; for CUDA 12 use
-`nvcr.io/nvidia/pytorch:25.06-py3`. See the repo root
-[Which base container should I use?](../../README.md#which-base-container-should-i-use)
-and [Cosmos Framework setup](https://github.com/NVIDIA/cosmos-framework/blob/main/docs/setup.md#recommended-base-image).
+`nvcr.io/nvidia/pytorch:25.06-py3`. See
+[Cosmos Framework setup](https://github.com/NVIDIA/cosmos-framework/blob/main/docs/setup.md#recommended-base-image).
 
 Inside that image (or any minimal GPU host), install the system packages below **before**
 your first `torchrun` inference — `uv sync --all-extras` alone is not enough for
@@ -128,8 +127,7 @@ python -c "import cv2; print(cv2.__version__)"
 ```
 
 If you see `libxcb.so.1: cannot open shared object file`, the `libxcb1` / `libgl1`
-packages above were not installed. The same fix is documented in the repo root
-[troubleshooting guide](../../README.md#import-fails-with-libxcbso1-cannot-open-shared-object-file).
+packages above were not installed.
 
 When using the **NGC PyTorch base image**, clear `LD_LIBRARY_PATH` after activating the
 venv so the container’s bundled libtorch does not shadow the venv (see
@@ -174,7 +172,12 @@ text-to-video, image-to-video, video-to-video, and synchronized audio examples.
 Initial Cosmos3 support was added in TensorRT-LLM PR
 [#14824](https://github.com/NVIDIA/TensorRT-LLM/pull/14824), synchronized audio
 in [#14827](https://github.com/NVIDIA/TensorRT-LLM/pull/14827), and
-video-to-video in [#16155](https://github.com/NVIDIA/TensorRT-LLM/pull/16155).
+video-to-video in [#16155](https://github.com/NVIDIA/TensorRT-LLM/pull/16155). The
+DMD2-distilled four-step checkpoints were added in
+[#16563](https://github.com/NVIDIA/TensorRT-LLM/pull/16563) (text-to-image) and
+[#16690](https://github.com/NVIDIA/TensorRT-LLM/pull/16690) (image-to-video), and
+Cosmos3-Edge (Nemotron-dense backbone) in
+[#16773](https://github.com/NVIDIA/TensorRT-LLM/pull/16773).
 Use a TensorRT-LLM checkout or package that includes those changes.
 
 Install TensorRT-LLM following its upstream documentation.
@@ -222,11 +225,18 @@ pip install cosmos_guardrail==0.3.0
 # pip uninstall opencv-python
 ```
 
-Set the TensorRT-LLM source root for the shared VisualGen config YAMLs:
+Set the TensorRT-LLM source root for the shared VisualGen config YAMLs. Run this
+from inside the TensorRT-LLM checkout — the directory the `git clone` above
+created, which is where `examples/` lives — or point `TRTLLM_ROOT` at that
+checkout explicitly. `trtllm-serve` only reports a bad `--visual_gen_args` path
+after it has started, so check it here instead:
 
 ```bash
-export TRTLLM_ROOT="${TRTLLM_ROOT:-$PWD/TensorRT-LLM}"
+export TRTLLM_ROOT="${TRTLLM_ROOT:-$PWD}"
 export COSMOS3_TRTLLM_PORT="${COSMOS3_TRTLLM_PORT:-8000}"
+
+test -d "$TRTLLM_ROOT/examples/visual_gen/configs" \
+  || echo "TRTLLM_ROOT=$TRTLLM_ROOT does not look like a TensorRT-LLM checkout"
 ```
 
 **Cosmos3-Nano** (single GPU):
@@ -245,6 +255,54 @@ torchrun --nproc_per_node=4 -m tensorrt_llm.commands.serve \
   --visual_gen_args "$TRTLLM_ROOT/examples/visual_gen/configs/cosmos3-super-4gpu.yaml" \
   --port "$COSMOS3_TRTLLM_PORT"
 ```
+
+**Cosmos3-Edge** (single GPU):
+
+```bash
+trtllm-serve nvidia/Cosmos3-Edge \
+  --port "$COSMOS3_TRTLLM_PORT"
+```
+
+Edge is the compact 4B checkpoint. Its 480p-native generation defaults
+(832x480 with 121 frames, 50 UniPC steps on the checkpoint-declared native flow
+schedule, guidance 5.0, flow shift 3.0) are read from the checkpoint, so it takes
+no `--visual_gen_args` override. Edge text-to-image goes to
+`/v1/images/generations` with `"output_type": "image"` in `extra_params` (video
+mode would otherwise apply Cosmos3's video negative prompt to a still); the two
+video modes go to `/v1/videos/generations`. TensorRT-LLM serves Edge for
+text-to-image, text-to-video, and image-to-video only: Edge has no audio tower, its action
+weights are not served by this pipeline, and video-to-video is validated for Nano
+and Super. Requests outside the model card's validated envelope (256p/480p,
+50-150 frames, 12-30 FPS) still run and log an advisory line.
+
+**Cosmos3-Super-Text2Image-4Step** (single GPU; DMD2-distilled text-to-image):
+
+```bash
+trtllm-serve nvidia/Cosmos3-Super-Text2Image-4Step \
+  --visual_gen_args "$TRTLLM_ROOT/examples/visual_gen/configs/cosmos3-t2i-1gpu.yaml" \
+  --port "$COSMOS3_TRTLLM_PORT"
+```
+
+**Cosmos3-Super-Image2Video-4Step** (single GPU; DMD2-distilled image-to-video):
+
+```bash
+trtllm-serve nvidia/Cosmos3-Super-Image2Video-4Step \
+  --port "$COSMOS3_TRTLLM_PORT"
+```
+
+Both distilled students run a fixed four-step stochastic schedule read from the
+checkpoint's scheduler config, with classifier-free guidance baked into the
+weights. TensorRT-LLM supplies both values and rejects a request that sends a
+different `num_inference_steps`, or a `guidance_scale` other than `1.0`, so leave
+both out of the request. `Cosmos3-Super-Image2Video-4Step` also declares
+`default_use_system_prompt: true`, which applies only while the request leaves
+`use_system_prompt` unset. The text-to-image student deploys at 1024x1024, the
+shape `cosmos3-t2i-1gpu.yaml` warms; the image-to-video student deploys at the
+default 720p x 189-frame omni shape and needs no config file. The
+[distilled 4-step notebook](generator/audiovisual/run_distilled_with_trt_llm.ipynb)
+runs both against a running server. These students cover text-to-image and
+image-to-video only; use the base checkpoints for text-to-video, video-to-video,
+and synchronized audio.
 
 The server exposes `/health`, `/v1/videos/generations`, `/v1/videos`, and
 `/v1/images/generations`. The audiovisual notebook uses the validated video
@@ -476,9 +534,7 @@ vllm serve nvidia/Cosmos3-Nano \
   --init-timeout 1800
 ```
 
-Alternatively, pass a
-[`--deploy-config`](../../README.md#generator-with-vllm-omni) as documented in
-the repository root README. See also the
+See also the
 [vLLM-Omni Cosmos3-Nano recipe](https://github.com/vllm-project/vllm-omni/blob/main/recipes/cosmos3/Cosmos3-Nano.md).
 
 ### Option 1: Docker (recommended)
