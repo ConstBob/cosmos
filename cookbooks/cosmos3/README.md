@@ -304,6 +304,16 @@ trtllm-serve nvidia/Cosmos3-Super \
   --max_num_tokens 32768
 ```
 
+**Cosmos3-Edge** (single GPU, port 8001):
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+trtllm-serve nvidia/Cosmos3-Edge \
+  --host 0.0.0.0 \
+  --port 8001 \
+  --max_num_tokens 32768
+```
+
 The server exposes `/health` and the OpenAI-compatible API at
 `http://localhost:8001/v1`. See the
 [Reasoner TensorRT-LLM notebook](reasoner/run_with_tensorrt_llm.ipynb) for image
